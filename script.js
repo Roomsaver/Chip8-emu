@@ -451,6 +451,7 @@ function main()
 
 function init()
 {
+    // more init stuff
     setFont();
 }
 
