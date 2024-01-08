@@ -1,9 +1,10 @@
+var game = new Array();
 
 function byteString(n)
 {
     if(n < 0 || n > 255 || n % 1 !== 0)
     {
-        throw new Error(n + " does not fit in a byte");
+        throw new Error(`${n} does not fit in a byte.\nRegisters: ${registers}\npc: ${programCounter}`);
     }
     return ("00000000" + n.toString(2)).slice(-8)
 }
@@ -12,7 +13,7 @@ function _12BitString(n)
 {
     if(n < 0 || n > 4095 || n % 1 !== 0)
     {
-        throw new Error(n + " does not fit into a byte and a nibble");
+        throw new Error(`${n} does not fit into a byte and a nibble\nRegisters: ${registers}\npc: ${programCounter}`);
     }
     return ("000000000000" + n.toString(2)).slice(-12);
 }
@@ -21,7 +22,7 @@ function twoByteString(n)
 {
     if(n < 0 || n > 65535 || n % 1 !== 0)
     {
-        throw new Error(n + " does not fit in two bytes");
+        throw new Error(`${n} does not fit in two bytes.\nRegisters: ${registers}\npc: ${programCounter}`);
     }
     return ("0000000000000000" + n.toString(2)).slice(-16)
 }
@@ -215,8 +216,12 @@ function main()
             programCounter = pop();
             break;
         case `1${NNN}`:
-            // Jump
+            // Jump 001000101000
             programCounter = _12BitString(parseInt(NNN, 16));
+            if(parseInt(programCounter, 2) < 512)
+            {
+                console.log(`PC is ${programCounter}!\nRegisters: ${registers}`);
+            }
             break;
         case `2${NNN}`:
             // Subroutine
@@ -320,18 +325,18 @@ function main()
             break;
         case `a${NNN}`:
             // I=nnn
-            indexRegister = byteString(parseInt(NNN, 16));
+            indexRegister = twoByteString(parseInt(NNN, 16));
             break;
         case `b${NNN}`:
             // I=NNN+v0
             if(ambiguousBNNN)
             {
-                indexRegister = byteString(parseInt(NNN, 16) + parseInt(registers[0], 2));
+                indexRegister = twoByteString(parseInt(NNN, 16) + parseInt(registers[0], 2));
             }
             // I=NNN+vX
             else
             {
-                indexRegister = byteString(parseInt(NNN, 16) + parseInt(registers[parseInt(X, 16)], 2));
+                indexRegister = twoByteString(parseInt(NNN, 16) + parseInt(registers[parseInt(X, 16)], 2));
             }
             break;
         case `c${X}${KK}`:
@@ -351,7 +356,7 @@ function main()
                 {
                     break;
                 }
-                let currentByte = memory[parseInt(i, 16)].split("");
+                let currentByte = memory[parseInt(i, 2)].split("");
                 for(let k = 0;k < currentByte.length;k++)
                 {
                     if(screen[dxynX + (64 * dxynY)] == 1 && currentByte[k] == 1)
@@ -367,6 +372,7 @@ function main()
                 }
                 dxynY++;
             }
+            drawScreen();
             break;
         case `e${X}9e`:
             // skip if key=vx
@@ -410,11 +416,11 @@ function main()
             // vx + indexreg, store in indexreg
             let tempfx1e = parseInt(registers[parseInt(X, 16)], 2) + parseInt(indexRegister, 2);
             setCarryBit(tempfx1e > parseInt('0FFF', 16) ? 1 : 0); 
-            indexRegister = byteString(tempfx1e);
+            indexRegister = twoByteString(tempfx1e);
             break;
         case `f${X}29`:
             // font character
-            indexRegister = byteString(getFont(registers[parseInt(X, 16)]));
+            indexRegister = twoByteString(getFont(registers[parseInt(X, 16)]));
             break;
         case `f${X}33`:
             let tempfx33 = `${parseInt(registers[parseInt(X, 16)], 2)}`;
@@ -443,23 +449,64 @@ function main()
 
             if(ambiguousSLMem)
             {
-                indexRegister = byteString(parseInt(indexRegister, 2) + parseInt(X, 16) + 1);
+                indexRegister = twoByteString(parseInt(indexRegister, 2) + parseInt(X, 16) + 1);
             }
             break;
+    }
+    // main();
+    if(parseInt(programCounter, 2) < 512)
+    {
+        console.log(`PC is ${programCounter}!\nRegisters: ${registers}`);
     }
 }
 
 function init()
 {
-    // more init stuff
     setFont();
+    loadGame();
+    programCounter = _12BitString(512);
+    // main();
+    let gameLoop = setInterval(main, 500);
+}
+
+function loadFile()
+{
+    if(document.querySelector("#file").value != '')
+    {
+        var file = document.querySelector("#file").files[0];
+        var reader = new FileReader();
+        
+	    reader.onload = function(e) {
+	    	// binary data
+            var result = e.target.result;
+            for (let i = 0; i < e.target.result.length; i++)
+            {
+                let byteStr = result.charCodeAt(i).toString(16);
+                if (byteStr.length < 2)
+                {
+                    byteStr = "0" + byteStr;
+                }
+                game.push(byteStr);
+            }
+	    };
+
+	    reader.onerror = function(e) {
+	    	// error occurred
+	    	console.log('Error : ' + e.type);
+	    };
+
+	    reader.readAsBinaryString(file);
+    }
 }
 
 function loadGame()
 {
-    let fileReader = FileReader();
-    fileReader.readAsBinaryString('test_opcode.ch8');
+    
     // 512-4095
+    for(let i = 512;i<game.length + 512;i++)
+    {
+        memory[i] = byteString(parseInt(game[i-512], 16));
+    }
 }
 
 var screenWidth = 64;
@@ -474,7 +521,7 @@ var ambiguousSLMem = false;
 var memory = new Array(4096).fill(byteString(0));
 
 var registers = new Array(16).fill(byteString(0));
-var indexRegister = byteString(0);
+var indexRegister = twoByteString(0);
 var programCounter = _12BitString(0);
 
 var stack = new Array(48).fill(_12BitString(0));
