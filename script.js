@@ -1,3 +1,4 @@
+
 function byteString(n)
 {
     if(n < 0 || n > 255 || n % 1 !== 0)
@@ -75,6 +76,12 @@ function skipInstruction()
     programCounter = _12BitString(temp);
 }
 
+function prevInstruction()
+{
+    let temp = parseInt(programCounter, 2) - 2;
+    programCounter = _12BitString(temp);
+}
+
 function setCarryBit(val)
 {
     registers[parseInt("F", 16)] = byteString(val);
@@ -96,6 +103,85 @@ function subtract(x, y)
 function beep()
 {
     document.getElementById('beep').play(); 
+}
+
+function setFont()
+{
+    let font = 
+    [
+        [0xF0, 0x90, 0x90, 0x90, 0xF0], // 0
+        [0x20, 0x60, 0x20, 0x20, 0x70], // 1
+        [0xF0, 0x10, 0xF0, 0x80, 0xF0], // 2
+        [0xF0, 0x10, 0xF0, 0x10, 0xF0], // 3
+        [0x90, 0x90, 0xF0, 0x10, 0x10], // 4
+        [0xF0, 0x80, 0xF0, 0x10, 0xF0], // 5
+        [0xF0, 0x80, 0xF0, 0x90, 0xF0], // 6
+        [0xF0, 0x10, 0x20, 0x40, 0x40], // 7
+        [0xF0, 0x90, 0xF0, 0x90, 0xF0], // 8
+        [0xF0, 0x90, 0xF0, 0x10, 0xF0], // 9
+        [0xF0, 0x90, 0xF0, 0x90, 0x90], // A
+        [0xE0, 0x90, 0xE0, 0x90, 0xE0], // B
+        [0xF0, 0x80, 0x80, 0x80, 0xF0], // C
+        [0xE0, 0x90, 0x90, 0x90, 0xE0], // D
+        [0xF0, 0x80, 0xF0, 0x80, 0xF0], // E
+        [0xF0, 0x80, 0xF0, 0x80, 0x80]  // F
+    ];
+
+    let address = 80
+
+    for(let i = 0; i < 16; i++)
+    {
+        for(let k = 0;k<5;k++)
+        {
+            memory[address] = byteString(font[i][k]);
+            address++;
+        }
+    }
+}
+
+function getFont(letter)
+{
+    let fontMap = 
+    {
+        '0': 0x050,
+        '1': 0x055,
+        '2': 0x05a,
+        '3': 0x05f,
+        '4': 0x064,
+        '5': 0x069,
+        '6': 0x06e,
+        '7': 0x073,
+        '8': 0x078,
+        '9': 0x07d,
+        'a': 0x082,
+        'b': 0x087,
+        'c': 0x08c,
+        'd': 0x091,
+        'e': 0x096,
+        'f': 0x09b
+    }
+
+    return fontMap[letter];
+}
+
+function drawScreen()
+{
+    let context = document.getElementById('screen').getContext('2d')
+    for(let y = 0;y<screenHeight;y++)
+    {
+        for(let x = 0;x<screenWidth;x++)
+        {
+            if(screen[(y*64)+x] == 0)
+            {
+                context.fillStyle = '#FFFFFF' 
+            }
+            else
+            {
+                context.fillStyle = '#000000' 
+            }
+            context.fillRect(x, y, 1, 1);
+        }
+    }
 }
 
 
@@ -121,6 +207,8 @@ function main()
     {
         case "00e0":
             // clear screen
+            screen.fill(0);
+            drawScreen();
             break;
         case "00ee":
             // pop from stack
@@ -266,14 +354,14 @@ function main()
                 let currentByte = memory[parseInt(i, 16)].split("");
                 for(let k = 0;k < currentByte.length;k++)
                 {
-                    if(screen[dxynX][dxynY] == 1 && currentByte[k] == 1)
+                    if(screen[dxynX + (64 * dxynY)] == 1 && currentByte[k] == 1)
                     {
-                        screen[dxynX][dxynY] = 0;
+                        screen[dxynX + (64 * dxynY)] = 0;
                         setCarryBit(1);
                     }
-                    else if(screen[dxynX][dxynY] == 0 && currentByte[k] == 1)
+                    else if(screen[dxynX + (64 * dxynY)] == 0 && currentByte[k] == 1)
                     {
-                        screen[dxynX][dxynY] = 1;
+                        screen[dxynX + (64 * dxynY)] = 1;
                         dxynX++;
                     }
                 }
@@ -298,6 +386,18 @@ function main()
             // vx = delaytimer
             registers[parseInt(X, 16)] = delayTimer;
             break;
+        case `f${X}0a`:
+            // get key
+            prevInstruction()
+            for(let ifx0a = false;ifx0a==false;)
+            {
+                if(typeof keyPressed === 'number')
+                {
+                    registers[parseInt(X, 16)] = byteString(keyPressed);
+                    ifx0a = true;
+                }
+            }
+            break;
         case `f${X}15`:
             // delaytimer = vx
             delayTimer = registers[parseInt(X, 16)];
@@ -306,19 +406,69 @@ function main()
             // soundtimer = vx
             soundTimer = registers[parseInt(X, 16)];
             break;
+        case `f${X}1e`:
+            // vx + indexreg, store in indexreg
+            let tempfx1e = parseInt(registers[parseInt(X, 16)], 2) + parseInt(indexRegister, 2);
+            setCarryBit(tempfx1e > parseInt('0FFF', 16) ? 1 : 0); 
+            indexRegister = byteString(tempfx1e);
+            break;
+        case `f${X}29`:
+            // font character
+            indexRegister = byteString(getFont(registers[parseInt(X, 16)]));
+            break;
+        case `f${X}33`:
+            let tempfx33 = `${parseInt(registers[parseInt(X, 16)], 2)}`;
+            tempfx33 = tempfx33.length == 3 ? tempfx33 : tempfx33.length == 2 ? `0${tempfx33}` : `00${tempfx33}`;
+            let tempfx331 = tempfx33.slice(0, 1);
+            let tempfx332 = tempfx33.slice(1, 2);
+            let tempfx333 = tempfx33.slice(2, 3);
+            
+            memory[parseInt(indexRegister, 2)] = byteString(tempfx331);
+            memory[parseInt(indexRegister, 2) + 1] = byteString(tempfx332);
+            memory[parseInt(indexRegister, 2) + 2] = byteString(tempfx333);
+            break;
+        case `f${X}55`:
+            // store registers to memory
+            for(let fx55i = 0;fx55i<X;fx55i++)
+            {
+                memory[parseInt(indexRegister, 2) + fx55i] = registers[parseInt(fx55i, 16)];
+            }
+            break;
+        case `f${X}65`:
+            // load from memory to registers
+            for(let fx65i = 0;fx65i<X;fx65i++)
+            {
+                registers[parseInt(fx65i, 16)] = memory[parseInt(indexRegister, 2) + fx65i];
+            }
+
+            if(ambiguousSLMem)
+            {
+                indexRegister = byteString(parseInt(indexRegister, 2) + parseInt(X, 16) + 1);
+            }
+            break;
     }
 }
 
 function init()
 {
+    setFont();
+}
 
+function loadGame()
+{
+    let fileReader = FileReader();
+    fileReader.readAsBinaryString('test_opcode.ch8');
+    // 512-4095
 }
 
 var screenWidth = 64;
 var screenHeight = 32;
 
+var screen = new Array(2048).fill(0);
+
 var ambiguousShift = true;
 var ambiguousBNNN = false;
+var ambiguousSLMem = false;
 
 var memory = new Array(4096).fill(byteString(0));
 
